@@ -63,7 +63,9 @@
 (defun eaglet--/eglot-hover-eldoc-function/filter-args (args)
   (let* ((cb (car args))
          (fn (lambda (info &rest _ignored)
-               (funcall cb info))))
+               (funcall cb (if (stringp info)
+                               (replace-regexp-in-string "\n\\{2,\\}" "\n" info)
+                             info)))))
     (setf (car args) fn))
   args)
 
