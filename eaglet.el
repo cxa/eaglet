@@ -37,6 +37,11 @@
   :type 'boolean
   :group 'eglot)
 
+(defcustom eaglet-eldoc-suggestions-prefix-with-indicator t
+  "Prefix `eglot-code-action-indicator' for suggestions in eldoc hint if t."
+  :type 'boolean
+  :group 'eglot)
+
 (defun eaglet--actions-filter-default (action)
   (not (string-match-p "^refactor\\.move" (plist-get action :kind))))
 
@@ -76,13 +81,34 @@
     (advice-remove 'eglot-hover-eldoc-function
                    #'eaglet--/eglot-hover-eldoc-function/filter-args)))
 
+(defun eaglet--/eglot-code-action-suggestion/filter-args (args)
+  (let* ((cb (car args))
+         (fn (lambda (info &rest _ignored)
+               (funcall cb (if (stringp info)
+                               (concat eglot-code-action-indicator info)
+                             info)))))
+    (setf (car args) fn))
+  args)
+
+(defun eaglet--eglot-code-action-suggestion-setup (prefix-indicator)
+  (if prefix-indicator
+      (advice-add 'eglot-code-action-suggestion :filter-args
+                  #'eaglet--/eglot-code-action-suggestion/filter-args)
+    (advice-remove 'eglot-code-action-suggestion
+                   #'eaglet--/eglot-code-action-suggestion/filter-args)))
+
 (with-eval-after-load 'eglot
   (advice-add 'eglot--request :around #'eaglet--/eglot--request/around)
   (advice-add 'eglot--async-request :around #'eaglet--/eglot--async-request/around)
   (eaglet--eglot-hover-eldoc-setup eaglet-hover-expand-eldoc)
   (add-variable-watcher 'eaglet-hover-expand-eldoc
                         (lambda (_sym newval op &rest _)
-                          (when (eq op 'set) (eaglet--eglot-hover-eldoc-setup newval)))))
+                          (when (eq op 'set) (eaglet--eglot-hover-eldoc-setup newval))))
+  (eaglet--eglot-code-action-suggestion-setup eaglet-eldoc-suggestions-prefix-with-indicator)
+  (add-variable-watcher 'eaglet-eldoc-suggestions-prefix-with-indicator
+                        (lambda (_sym newval op &rest _)
+                          (when (eq op 'set)
+                            (eaglet--eglot-code-action-suggestion-setup newval)))))
 
 (provide 'eaglet)
 
