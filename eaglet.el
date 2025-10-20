@@ -4,7 +4,7 @@
 
 ;; Maintainer: xianan.chen@gmail.com
 ;; URL: https://github.com/cxa/eaglet
-;; Keywords: tailwind, css, completion
+;; Keywords: eglot, lsp
 
 ;; This file is not part of GNU Emacs.
 
