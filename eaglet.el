@@ -42,6 +42,11 @@
   :type 'boolean
   :group 'eglot)
 
+(defcustom eaglet-rename-placeholder t
+  "Show placeholder for `eglot-rename'."
+  :type 'boolean
+  :group 'eglot)
+
 (defun eaglet--actions-filter-default (action)
   (not (string-match-p "^refactor\\.move" (plist-get action :kind))))
 
@@ -97,6 +102,21 @@
     (advice-remove 'eglot-code-action-suggestion
                    #'eaglet--/eglot-code-action-suggestion/filter-args)))
 
+(defun eaglet--/eglot-rename/around (orig-fn newname)
+  (interactive
+   (list (read-from-minibuffer
+          (eglot--format "Rename `%s' to: "
+                         (or (thing-at-point 'symbol t)
+                             "unknown symbol"))
+          (symbol-name (symbol-at-point)) nil nil nil
+          (symbol-name (symbol-at-point)))))
+  (funcall orig-fn newname))
+
+(defun eaglet--eglot-rename-placeholder-setup (placeholder)
+  (if placeholder
+      (advice-add 'eglot-rename :around #'eaglet--/eglot-rename/around)
+    (advice-remove 'eglot-rename #'eaglet--/eglot-rename/around)))
+
 (with-eval-after-load 'eglot
   (advice-add 'eglot--request :around #'eaglet--/eglot--request/around)
   (advice-add 'eglot--async-request :around #'eaglet--/eglot--async-request/around)
@@ -108,7 +128,12 @@
   (add-variable-watcher 'eaglet-eldoc-suggestions-prefix-with-indicator
                         (lambda (_sym newval op &rest _)
                           (when (eq op 'set)
-                            (eaglet--eglot-code-action-suggestion-setup newval)))))
+                            (eaglet--eglot-code-action-suggestion-setup newval))))
+  (eaglet--eglot-rename-placeholder-setup eaglet-rename-placeholder)
+  (add-variable-watcher 'eaglet-rename-placeholder
+                        (lambda (_sym newval op &rest _)
+                          (when (eq op 'set)
+                            (eaglet--eglot-rename-placeholder-setup newval)))))
 
 (provide 'eaglet)
 
