@@ -17,5 +17,6 @@ Currently we have:
 - `eaglet-hover-expand-eldoc`: Do not shorten the documentation in echo area.
 - `eaglet-eldoc-suggestions-prefix-with-indicator`: Adds an indicator prefix to suggestions displayed in Eldoc.
 - `eaglet-rename-placeholder`: Prefills the same symbol as a placeholder when renaming.
+- `eaglet-open-documentation-link`: Chooses a link from the latest ElDoc documentation and opens it, excluding inline `data:` URLs. Relative files resolve from the source buffer, while document fragments open in the rendered documentation buffer. In Eglot buffers it is bound to `C-c C-e l`.
 
 When Emacs provides `markdown-ts-view-mode`, Eaglet uses it to render Eglot documentation unless another renderer is already selected.

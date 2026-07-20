@@ -27,6 +27,9 @@
 ;;; Code:
 
 (require 'eglot)
+(require 'button)
+
+(declare-function markdown-ts-view-mode "markdown-ts-mode")
 
 (defcustom eaglet-action-filter #'eaglet--actions-filter-default
   "Actions Filter."
@@ -125,8 +128,61 @@ Keep an explicitly selected `eglot-documentation-renderer' unchanged."
              (fboundp 'markdown-ts-view-mode))
     (setq eglot-documentation-renderer #'markdown-ts-view-mode)))
 
+(defun eaglet--documentation-link-candidates (buffer)
+  "Return completion candidates for documentation links in BUFFER.
+Each candidate is a cons whose car contains the link label and target and whose
+cdr is the corresponding text button position."
+  (with-current-buffer buffer
+    (let ((position (point-min))
+          candidates
+          button)
+      (while (setq button (next-button position t))
+        (when-let* ((target (button-get button 'help-echo))
+                    ((stringp target))
+                    ((not (string-prefix-p "data:" target t)))
+                    ((button-get button 'action)))
+          (push (cons (format "%s — %s" (button-label button) target)
+                      button)
+                candidates))
+        (setq position (button-end button)))
+      (nreverse candidates))))
+
+(defun eaglet--activate-documentation-link (buffer button origin-directory)
+  "Activate BUTTON from documentation BUFFER using ORIGIN-DIRECTORY.
+Visit an in-document fragment inside BUFFER after restoring its Markdown view
+mode; other button actions retain the source buffer's directory so relative
+file links resolve in the project that supplied the documentation."
+  (with-current-buffer buffer
+    (let ((target (button-get button 'help-echo))
+          (default-directory origin-directory))
+      (if (string-prefix-p "#" target)
+          (progn
+            (unless (fboundp 'markdown-ts-view-mode)
+              (user-error "Markdown view mode is unavailable"))
+            (pop-to-buffer buffer)
+            (markdown-ts-view-mode)
+            (button-activate button))
+        (button-activate button)))))
+
+;;;###autoload
+(defun eaglet-open-documentation-link ()
+  "Choose and open a link from the latest ElDoc documentation."
+  (interactive)
+  (let* ((origin-directory default-directory)
+         (buffer (eldoc-doc-buffer))
+         (candidates (eaglet--documentation-link-candidates buffer)))
+    (unless candidates
+      (user-error "The latest ElDoc documentation has no links"))
+    (let ((choice (completing-read "Open documentation link: "
+                                   candidates nil t)))
+      (eaglet--activate-documentation-link
+       buffer
+       (alist-get choice candidates nil nil #'string=)
+       origin-directory))))
+
 (with-eval-after-load 'eglot
   (eaglet--eglot-documentation-renderer-setup)
+  (keymap-set eglot-mode-map "C-c C-e l" #'eaglet-open-documentation-link)
   (advice-add 'eglot--request :around #'eaglet--/eglot--request/around)
   (advice-add 'eglot--async-request :around #'eaglet--/eglot--async-request/around)
   (eaglet--eglot-hover-eldoc-setup eaglet-hover-expand-eldoc)

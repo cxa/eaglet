@@ -57,5 +57,99 @@
     (eaglet--eglot-documentation-renderer-setup)
     (should (eq eglot-documentation-renderer #'text-mode))))
 
+(ert-deftest eaglet/user-can-choose-and-open-documentation-link ()
+  "Offer rendered link text and destination, then activate the chosen link."
+  (let ((eldoc--doc-buffer (generate-new-buffer " *eaglet-test-eldoc*"))
+        opened)
+    (unwind-protect
+        (progn
+          (with-current-buffer eldoc--doc-buffer
+            (insert "Read the ")
+            (insert-text-button "Guide"
+                                'help-echo "https://example.test/guide"
+                                'action (lambda (_button)
+                                          (setq opened "guide")))
+            (insert " or ")
+            (insert-text-button "API reference"
+                                'help-echo "https://example.test/api"
+                                'action (lambda (_button)
+                                          (setq opened "api")))
+            (insert "; ignore ")
+            (insert-text-button "inline image"
+                                'help-echo "DATA:image/png;base64,AAAA"
+                                'action (lambda (_button)
+                                          (setq opened "data"))))
+          (cl-letf (((symbol-function 'completing-read)
+                     (lambda (prompt collection &rest _arguments)
+                       (should (equal prompt "Open documentation link: "))
+                       (should
+                        (equal (mapcar #'car collection)
+                               '("Guide — https://example.test/guide"
+                                 "API reference — https://example.test/api")))
+                       "API reference — https://example.test/api")))
+            (eaglet-open-documentation-link))
+          (should (equal opened "api")))
+      (kill-buffer eldoc--doc-buffer))))
+
+(ert-deftest eaglet/reports-when-documentation-has-no-links ()
+  "Explain when the latest ElDoc documentation contains no links."
+  (let ((eldoc--doc-buffer (generate-new-buffer " *eaglet-test-eldoc*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer eldoc--doc-buffer
+            (insert "Documentation without links."))
+          (should-error (eaglet-open-documentation-link)
+                        :type 'user-error))
+      (kill-buffer eldoc--doc-buffer))))
+
+(ert-deftest eaglet/opens-relative-documentation-links-from-source-directory ()
+  "Resolve relative links against the Eglot source buffer's directory."
+  (let ((eldoc--doc-buffer (generate-new-buffer " *eaglet-test-eldoc*"))
+        opened-from)
+    (unwind-protect
+        (progn
+          (with-current-buffer eldoc--doc-buffer
+            (setq default-directory "/old-project/")
+            (insert "README")
+            (make-text-button 1 7
+                              'help-echo "README.md"
+                              'action (lambda (_button)
+                                        (setq opened-from default-directory))))
+          (with-temp-buffer
+            (setq default-directory "/source-project/")
+            (cl-letf (((symbol-function 'completing-read)
+                       (lambda (&rest _arguments)
+                         "README — README.md")))
+              (eaglet-open-documentation-link)))
+          (should (equal opened-from "/source-project/")))
+      (kill-buffer eldoc--doc-buffer))))
+
+(ert-deftest eaglet/visits-fragments-in-rendered-documentation ()
+  "Open an in-document fragment in the rendered ElDoc buffer."
+  (skip-unless (and (treesit-language-available-p 'markdown)
+                    (treesit-language-available-p 'markdown-inline)))
+  (let ((eldoc--doc-buffer nil))
+    (unwind-protect
+        (let ((documentation
+               (eglot--format-markup
+                '(:kind "markdown"
+                  :value "[Jump](#details)\n\n# Details\n\nMore."))))
+          (eldoc--format-doc-buffer (list (list documentation)))
+          (cl-letf (((symbol-function 'completing-read)
+                     (lambda (&rest _arguments)
+                       "Jump — #details")))
+            (eaglet-open-documentation-link))
+          (should (eq (window-buffer (selected-window)) eldoc--doc-buffer))
+          (with-current-buffer eldoc--doc-buffer
+            (should (looking-at-p "# Details"))))
+      (when (buffer-live-p eldoc--doc-buffer)
+        (kill-buffer eldoc--doc-buffer))
+      (setq eldoc--doc-buffer nil))))
+
+(ert-deftest eaglet/binds-documentation-link-picker-in-eglot-buffers ()
+  "Provide a default Eglot-local key for opening documentation links."
+  (should (eq (keymap-lookup eglot-mode-map "C-c C-e l")
+              #'eaglet-open-documentation-link)))
+
 (provide 'eaglet-test)
 ;;; eaglet-test.el ends here
