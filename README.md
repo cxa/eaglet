@@ -17,3 +17,5 @@ Currently we have:
 - `eaglet-hover-expand-eldoc`: Do not shorten the documentation in echo area.
 - `eaglet-eldoc-suggestions-prefix-with-indicator`: Adds an indicator prefix to suggestions displayed in Eldoc.
 - `eaglet-rename-placeholder`: Prefills the same symbol as a placeholder when renaming.
+
+When Emacs provides `markdown-ts-view-mode`, Eaglet uses it to render Eglot documentation unless another renderer is already selected.

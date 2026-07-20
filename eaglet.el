@@ -117,7 +117,16 @@
       (advice-add 'eglot-rename :around #'eaglet--/eglot-rename/around)
     (advice-remove 'eglot-rename #'eaglet--/eglot-rename/around)))
 
+(defun eaglet--eglot-documentation-renderer-setup ()
+  "Use Markdown for Eglot documentation when its view mode is available.
+Keep an explicitly selected `eglot-documentation-renderer' unchanged."
+  (when (and (null eglot-documentation-renderer)
+             (require 'markdown-ts-mode nil t)
+             (fboundp 'markdown-ts-view-mode))
+    (setq eglot-documentation-renderer #'markdown-ts-view-mode)))
+
 (with-eval-after-load 'eglot
+  (eaglet--eglot-documentation-renderer-setup)
   (advice-add 'eglot--request :around #'eaglet--/eglot--request/around)
   (advice-add 'eglot--async-request :around #'eaglet--/eglot--async-request/around)
   (eaglet--eglot-hover-eldoc-setup eaglet-hover-expand-eldoc)
