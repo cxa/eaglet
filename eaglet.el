@@ -51,13 +51,20 @@
   :group 'eglot)
 
 (defun eaglet--actions-filter-default (action)
-  (not (string-match-p "^refactor\\.move" (plist-get action :kind))))
+  (let ((kind (plist-get action :kind)))
+    (not (and (stringp kind) (string-prefix-p "refactor.move" kind)))))
+
+(defun eaglet--filter-actions (actions)
+  "Filter ACTIONS while preserving null, array and list responses."
+  (if (or (null actions) (null eaglet-action-filter))
+      actions
+    (let ((filtered (seq-filter eaglet-action-filter actions)))
+      (if (vectorp actions) (vconcat filtered) filtered))))
 
 (defun eaglet--/eglot--request/around (orig-fn &rest args)
   (let ((actions (apply orig-fn args)))
-    (if-let* (((eq :textDocument/codeAction (nth 1 args)))
-              (pred eaglet-action-filter))
-        (seq-into (seq-filter pred actions) (type-of actions))
+    (if (eq :textDocument/codeAction (nth 1 args))
+        (eaglet--filter-actions actions)
       actions)))
 
 (defun eaglet--/eglot--async-request/around (orig-fun server method params &rest plist)
@@ -68,9 +75,7 @@
                  :success-fn
                  (lambda (actions)
                    (funcall orig-success-fn
-                            (if-let ((pred eaglet-action-filter))
-                                (seq-into (seq-filter pred actions) (type-of actions))
-                              actions))))))
+                            (eaglet--filter-actions actions))))))
   (apply orig-fun server method params plist))
 
 (defun eaglet--/eglot-hover-eldoc-function/filter-args (args)

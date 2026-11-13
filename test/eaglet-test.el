@@ -5,6 +5,58 @@
 (require 'markdown-ts-mode)
 (require 'eaglet)
 
+(defun eaglet-test--filter-response (transport response method)
+  "Filter RESPONSE through TRANSPORT's actual advice for METHOD."
+  (if (eq transport 'sync)
+      (eaglet--/eglot--request/around
+       (lambda (&rest _) response) 'server method nil)
+    (let ((received :not-called))
+      (eaglet--/eglot--async-request/around
+       (lambda (_server _method _params &rest args)
+         (funcall (plist-get args :success-fn) response))
+       'server method nil :success-fn (lambda (actions) (setq received actions)))
+      received)))
+
+(ert-deftest eaglet/accepts-null-code-actions-sync ()
+  "Preserve JSON null from a synchronous code action request."
+  (let ((eaglet-action-filter #'eaglet--actions-filter-default))
+    (should-not (eaglet-test--filter-response 'sync nil :textDocument/codeAction))))
+
+(ert-deftest eaglet/accepts-null-code-actions-async ()
+  "Deliver JSON null to an asynchronous code action callback."
+  (let ((eaglet-action-filter #'eaglet--actions-filter-default))
+    (should-not (eaglet-test--filter-response 'async nil :textDocument/codeAction))))
+
+(ert-deftest eaglet/filters-code-actions-preserving-response-shape ()
+  "Keep empty arrays, filter move actions, and accept commands without kind."
+  (let ((eaglet-action-filter #'eaglet--actions-filter-default))
+    (dolist (transport '(sync async))
+      (should (equal (eaglet-test--filter-response transport [] :textDocument/codeAction) []))
+      (let* ((keep '(:title "Fix" :kind "quickfix"))
+             (move '(:title "Move" :kind "refactor.move.file"))
+             (command '(:title "Run" :command "example.run"))
+             (action '(:title "Fix without kind" :edit (:changes nil))))
+        (should (equal (eaglet-test--filter-response transport (vector move) :textDocument/codeAction) []))
+        (should (equal (eaglet-test--filter-response transport (vector keep move command action)
+                                                   :textDocument/codeAction)
+                       (vector keep command action)))
+        (should (equal (eaglet-test--filter-response transport (list keep move) :textDocument/codeAction)
+                       (list keep)))))))
+
+(ert-deftest eaglet/disabled-filter-preserves-code-actions ()
+  "Leave responses untouched when filtering is disabled."
+  (let ((eaglet-action-filter nil)
+        (response [(:title "Move" :kind "refactor.move")]))
+    (dolist (transport '(sync async))
+      (should (eq (eaglet-test--filter-response transport response :textDocument/codeAction) response)))))
+
+(ert-deftest eaglet/filter-leaves-other-methods-alone ()
+  "Do not apply the action filter to other LSP responses."
+  (let ((eaglet-action-filter (lambda (_) (ert-fail "Unexpected filter call")))
+        (response '(:contents "Hover")))
+    (dolist (transport '(sync async))
+      (should (eq (eaglet-test--filter-response transport response :textDocument/hover) response)))))
+
 (ert-deftest eaglet/uses-markdown-renderer-when-available ()
   "Prefer the built-in Markdown renderer when it can be loaded."
   (let ((eglot-documentation-renderer nil))
